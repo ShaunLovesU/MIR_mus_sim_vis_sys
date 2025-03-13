@@ -1,6 +1,11 @@
 import pygame
 import time
 import numpy as np
+import soundfile as sf
+import tkinter as tk
+from tkinter import filedialog
+from blackboard import parse_midi, generate_audio  
+
 
 pygame.init()
 pygame.mixer.init()
@@ -91,15 +96,33 @@ clear_button = pygame.Rect(500, HEIGHT - 120, 100, 50)
 slider_columns_box = pygame.Rect(650, HEIGHT - 120, 300, 10) 
 slider_bps_box = pygame.Rect(650, HEIGHT - 80, 300, 10)  
 
+upload_button = pygame.Rect(1150, HEIGHT - 120, 130, 50)  
+download_button = pygame.Rect(1300, HEIGHT - 120, 150, 50)  
+
+uploaded_midi = None  
+generated_audio = None  
+
 
 def draw_controls():
     pygame.draw.rect(screen, BLUE, play_button)
     pygame.draw.rect(screen, BLUE, stop_button)
     pygame.draw.rect(screen, RED, clear_button)
     
+    pygame.draw.rect(screen, (0, 200, 0), upload_button)  
+    pygame.draw.rect(screen, (200, 200, 0), download_button) 
+    
     screen.blit(font.render("Play", True, WHITE), (play_button.x + 25, play_button.y + 10))
     screen.blit(font.render("Stop", True, WHITE), (stop_button.x + 25, stop_button.y + 10))
     screen.blit(font.render("Clear", True, WHITE), (clear_button.x + 15, clear_button.y + 10))
+    
+    screen.blit(font.render("Upload", True, WHITE), (upload_button.x + 15, upload_button.y + 10))
+    screen.blit(font.render("Download", True, BLACK), (download_button.x + 15, download_button.y + 10))
+    
+
+    button_center_x = (upload_button.x + download_button.x + download_button.width) // 2
+    status_y = upload_button.y 
+    status_text = font.render(status_message, True, BLACK)
+    screen.blit(status_text, (button_center_x - status_text.get_width() // 2, status_y - 40))
 
     # Column Slider
     pygame.draw.rect(screen, BLACK, slider_columns_box)
@@ -112,6 +135,57 @@ def draw_controls():
     knob_x = 650 + (slider_bps - SLIDER_MIN_BPS) * (300 / (SLIDER_MAX_BPS - SLIDER_MIN_BPS))
     pygame.draw.circle(screen, BLUE, (int(knob_x), slider_bps_box.y + 5), 10)
     screen.blit(font.render(f"BPS: {slider_bps}", True, BLACK), (960, slider_bps_box.y - 5))
+
+
+status_message = "Waiting for user action..."
+def update_status(new_status):
+
+    global status_message
+    status_message = new_status  
+    button_center_x = (upload_button.x + download_button.x + download_button.width) // 2
+    status_y = upload_button.y - 40 
+
+    pygame.draw.rect(screen, GRAY, (button_center_x - 150, status_y - 5, 300, 30))
+
+    status_text = font.render(status_message, True, BLACK)
+    screen.blit(status_text, (button_center_x - status_text.get_width() // 2, status_y))  # **让文本对齐按钮中心**
+
+    pygame.display.update((button_center_x - 150, status_y - 5, 300, 30))
+
+
+
+    
+def upload_midi():
+    global uploaded_midi, generated_audio
+    root = tk.Tk()
+    root.withdraw()
+    
+    file_path = filedialog.askopenfilename(filetypes=[("MIDI files", "*.mid")])
+    if file_path:
+        update_status("Uploading MIDI file...")
+        uploaded_midi = file_path
+
+        update_status("Parsing MIDI file...")
+        notes = parse_midi(uploaded_midi)
+
+        update_status("Generating audio...")
+        generated_audio = generate_audio(notes)
+
+        update_status("Generation complete!")
+
+
+def download_audio():
+    global status_message
+    if generated_audio is not None:
+        status_message = "Saving the file..."
+        update_status("Saving the file...")
+
+        save_path = filedialog.asksaveasfilename(defaultextension=".wav", filetypes=[("WAV files", "*.wav")])
+        if save_path:
+            sf.write(save_path, generated_audio, samplerate=44100)
+
+            status_message = "Audio saved!"
+            update_status("Audio saved!")
 
 
 def play_column(col):
@@ -140,6 +214,13 @@ def handle_mouse_click(pos):
         slider_bps = max(SLIDER_MIN_BPS, min(SLIDER_MAX_BPS, slider_bps))
         bps = slider_bps
         playbar_interval = 1 / bps
+        
+    elif upload_button.collidepoint(x, y):
+        upload_midi()  
+
+    elif download_button.collidepoint(x, y):
+        download_audio()  
+        
     else:
         fixed_col_x = get_fixed_col_x()
         top_offset = (HEIGHT - GRID_ROWS * CELL_SIZE - 160) // 2
